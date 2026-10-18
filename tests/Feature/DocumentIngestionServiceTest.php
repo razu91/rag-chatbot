@@ -14,6 +14,7 @@ class DocumentIngestionServiceTest extends TestCase
 
     public function test_it_stores_document_chunks_in_database(): void
     {
+
         $tenant = Tenant::create([
             'name' => 'Test Company',
             'slug' => 'test-company',
@@ -34,6 +35,11 @@ class DocumentIngestionServiceTest extends TestCase
         );
 
         $this->assertSame(1, $count);
+
+        $this->assertSame(
+            'completed',
+            $document->fresh()->status,
+        );
 
         $this->assertDatabaseHas('document_chunks', [
             'tenant_id' => $tenant->id,

@@ -5,6 +5,7 @@ namespace App\Services\Rag;
 use App\Models\Document;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use Throwable;
 
 class DocumentIngestionService
 {
@@ -27,19 +28,31 @@ class DocumentIngestionService
 
         $chunks = $this->chunker->split($text);
 
-        return DB::transaction(function () use ($document, $chunks) {
-            // Remove old chunks so re-ingestion does not create duplicates.
-            $document->chunks()->delete();
+        $document->update(['status' => 'processing']);
 
-            foreach ($chunks as $index => $content) {
-                $document->chunks()->create([
-                    'tenant_id' => $document->tenant_id,
-                    'chunk_index' => $index,
-                    'content' => $content,
-                ]);
-            }
+        try {
+            $count = DB::transaction(function () use ($document, $chunks) {
+                // Replace existing chunks during re-ingestion.
+                $document->chunks()->delete();
 
-            return count($chunks);
-        });
+                foreach ($chunks as $index => $content) {
+                    $document->chunks()->create([
+                        'tenant_id' => $document->tenant_id,
+                        'chunk_index' => $index,
+                        'content' => $content,
+                    ]);
+                }
+
+                return count($chunks);
+            });
+
+            $document->update(['status' => 'completed']);
+
+            return $count;
+        } catch (Throwable $exception) {
+            $document->update(['status' => 'failed']);
+
+            throw $exception;
+        }
     }
 }
