@@ -8,7 +8,6 @@ use RuntimeException;
 class RagService
 {
     public function __construct(
-        private readonly EmbeddingService $embeddingService,
         private readonly ChunkSearchService $chunkSearchService,
     ) {}
 
@@ -23,14 +22,10 @@ class RagService
             );
         }
 
-        // 1. Generate an embedding for the user's question.
-        $queryEmbedding = $this->embeddingService
-            ->embedQuery($question);
-
-        // 2. Retrieve relevant chunks for this tenant.
+        // 1. Retrieve relevant chunks for this tenant.
         $chunks = $this->chunkSearchService->search(
-            $queryEmbedding,
             $tenantId,
+            $question,
             $limit,
         );
 
@@ -41,12 +36,12 @@ class RagService
             ];
         }
 
-        // 3. Build context from retrieved chunks.
+        // 2. Build context from retrieved chunks.
         $context = $chunks->map(
             fn ($chunk) => $chunk->content
         )->implode("\n\n---\n\n");
 
-        // 4. Ask Gemini to answer using the retrieved context.
+        // 3. Ask Gemini to answer using the retrieved context.
         $apiKey = config('services.gemini.api_key');
         $model = config(
             'services.gemini.generation_model',
