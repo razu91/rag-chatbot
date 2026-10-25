@@ -1,0 +1,76 @@
+
+name: Laravel CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Run Laravel Tests
+    runs-on: ubuntu-24.04
+
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg16-bookworm
+        env:
+          POSTGRES_DB: rag_chatbot_test
+          POSTGRES_USER: rag_user
+          POSTGRES_PASSWORD: rag_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rag_user -d rag_chatbot_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: rag_chatbot_test
+      DB_USERNAME: rag_user
+      DB_PASSWORD: rag_password
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_pgsql, pgsql, bcmath, intl, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Prepare Laravel environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Enable pgvector extension
+        run: |
+          PGPASSWORD="$DB_PASSWORD" psql \
+            -h 127.0.0.1 \
+            -U "$DB_USERNAME" \
+            -d "$DB_DATABASE" \
+            -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Run database migrations
+        run: php artisan migrate --force
+
+      - name: Run automated tests
+        run: php artisan test
