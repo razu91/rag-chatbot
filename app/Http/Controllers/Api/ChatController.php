@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Services\Rag\RagService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class ChatController extends Controller
@@ -19,13 +18,20 @@ class ChatController extends Controller
     {
         $validated = $request->validate([
             'question' => ['required', 'string', 'min:2', 'max:4000'],
-            'tenant_id' => ['required', 'integer'],
         ]);
+
+        $user = $request->user();
+
+        if ($user->tenant_id === null) {
+            return response()->json([
+                'message' => 'Your account is not associated with a tenant.',
+            ], 403);
+        }
 
         try {
             $result = $this->ragService->answer(
                 $validated['question'],
-                $validated['tenant_id'],
+                $user->tenant_id,
             );
 
             return response()->json($result);
