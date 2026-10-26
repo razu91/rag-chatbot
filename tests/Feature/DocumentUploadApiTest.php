@@ -198,4 +198,80 @@ class DocumentUploadApiTest extends TestCase
             Storage::disk('local')->allFiles('documents')
         );
     }
+
+
+    public function test_it_rejects_an_empty_text_file(): void
+    {
+        Storage::fake('local');
+
+        $tenant = Tenant::create([
+            'name' => 'Company A',
+            'slug' => 'company-a',
+        ]);
+
+        $user = new User();
+        $user->name = 'Test User';
+        $user->email = uniqid('user_', true) . '@example.com';
+        $user->password = 'password';
+        $user->tenant_id = $tenant->id;
+        $user->save();
+
+        $this->actingAs($user, 'sanctum');
+
+        $file = UploadedFile::fake()->createWithContent(
+            'empty.txt',
+            ''
+        );
+
+        $response = $this->postJson('/api/documents', [
+            'file' => $file,
+        ]);
+
+        $response->assertUnprocessable();
+
+        $this->assertDatabaseCount('documents', 0);
+
+        $this->assertSame(
+            [],
+            Storage::disk('local')->allFiles('documents')
+        );
+    }
+
+
+    public function test_it_rejects_files_larger_than_the_upload_limit(): void
+    {
+        Storage::fake('local');
+
+        $tenant = Tenant::create([
+            'name' => 'Company A',
+            'slug' => 'company-a',
+        ]);
+
+        $user = new User();
+        $user->name = 'Test User';
+        $user->email = uniqid('user_', true) . '@example.com';
+        $user->password = 'password';
+        $user->tenant_id = $tenant->id;
+        $user->save();
+
+        $this->actingAs($user, 'sanctum');
+
+        $file = UploadedFile::fake()->create(
+            'large.txt',
+            1025,
+            'text/plain'
+        );
+
+        $this->postJson('/api/documents', [
+            'file' => $file,
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseCount('documents', 0);
+
+        $this->assertSame(
+            [],
+            Storage::disk('local')->allFiles('documents')
+        );
+    }
+
 }

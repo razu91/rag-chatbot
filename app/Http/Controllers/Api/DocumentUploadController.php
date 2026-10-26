@@ -45,6 +45,21 @@ class DocumentUploadController extends Controller
         }
 
         $file = $validated['file'];
+
+        // Validate the text content before storing the file.
+        $text = file_get_contents($file->getRealPath());
+
+        if ($text === false || trim($text) === '') {
+            return response()->json([
+                'message' => 'The uploaded document must not be empty.',
+                'errors' => [
+                    'file' => [
+                        'The uploaded document must not be empty.',
+                    ],
+                ],
+            ], 422);
+        }
+
         $path = null;
         $document = null;
 
@@ -55,14 +70,6 @@ class DocumentUploadController extends Controller
             if ($path === false) {
                 throw new RuntimeException(
                     'Unable to store the uploaded document.'
-                );
-            }
-
-            $text = file_get_contents($file->getRealPath());
-
-            if ($text === false || trim($text) === '') {
-                throw new RuntimeException(
-                    'The uploaded document is empty or unreadable.'
                 );
             }
 
@@ -138,7 +145,7 @@ class DocumentUploadController extends Controller
 
             return response()->json([
                 'message' =>
-                    'Unable to upload or process the document right now.',
+                'Unable to upload or process the document right now.',
             ], 502);
         }
     }
