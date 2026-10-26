@@ -14,12 +14,12 @@ return new class extends Migration
         Schema::create('documents', function (Blueprint $table) {
             $table->id();
             $table->foreignId('tenant_id')
-            ->constrained('tenants')
-            ->restrictOnDelete();
+                ->constrained('tenants')
+                ->restrictOnDelete();
             $table->foreignId('uploaded_by')
-            ->nullable()
-            ->constrained('users')
-            ->nullOnDelete();
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
             $table->string('title');
             $table->string('original_name');
             $table->string('file_path')->nullable();

@@ -82,7 +82,7 @@ class RagServiceTest extends TestCase
         $search->shouldReceive('search')
             ->once()
             ->with(1, 'Unknown question', 5)
-            ->andReturn(new Collection());
+            ->andReturn(new Collection);
 
         $service = app(RagService::class);
 

@@ -25,7 +25,7 @@ class TextChunkerTest extends TestCase
 
     public function test_it_returns_empty_array_for_empty_text(): void
     {
-        $chunker = new TextChunker();
+        $chunker = new TextChunker;
 
         $this->assertSame([], $chunker->split(''));
     }

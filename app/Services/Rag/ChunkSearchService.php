@@ -37,7 +37,7 @@ class ChunkSearchService
         $embedding = $this->embeddingService
             ->embedQuery($query);
 
-        $vector = '[' . implode(',', $embedding) . ']';
+        $vector = '['.implode(',', $embedding).']';
 
         return DocumentChunk::query()
             ->where('tenant_id', $tenantId)

@@ -59,10 +59,10 @@ class DocumentIngestionService
                 $document->chunks()->delete();
 
                 foreach ($embeddedChunks as $chunk) {
-                    $vector = '[' . implode(
+                    $vector = '['.implode(
                         ',',
                         $chunk['embedding']
-                    ) . ']';
+                    ).']';
 
                     DB::insert(
                         <<<'SQL'

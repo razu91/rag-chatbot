@@ -80,7 +80,7 @@ class RagService
         if ($response->failed()) {
             throw new RuntimeException(
                 'Gemini answer generation failed: '
-                . $response->status()
+                .$response->status()
             );
         }
 

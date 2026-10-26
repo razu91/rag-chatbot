@@ -13,11 +13,11 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             $table->foreignId('tenant_id')
-            ->nullable()
-            ->constrained('tenants')
-            ->restrictOnDelete();
+                ->nullable()
+                ->constrained('tenants')
+                ->restrictOnDelete();
 
-             $table->index(['tenant_id', 'id']);
+            $table->index(['tenant_id', 'id']);
         });
     }
 

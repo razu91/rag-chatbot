@@ -20,8 +20,7 @@ class DocumentController extends Controller
 
         if ($user->tenant_id === null) {
             return response()->json([
-                'message' =>
-                    'Your account is not associated with a tenant.',
+                'message' => 'Your account is not associated with a tenant.',
             ], 403);
         }
 
@@ -51,8 +50,7 @@ class DocumentController extends Controller
 
         if ($user->tenant_id === null) {
             return response()->json([
-                'message' =>
-                    'Your account is not associated with a tenant.',
+                'message' => 'Your account is not associated with a tenant.',
             ], 403);
         }
 
@@ -82,8 +80,7 @@ class DocumentController extends Controller
 
         if ($user->tenant_id === null) {
             return response()->json([
-                'message' =>
-                    'Your account is not associated with a tenant.',
+                'message' => 'Your account is not associated with a tenant.',
             ], 403);
         }
 

@@ -78,9 +78,9 @@ class EmbeddingService
         if ($response->failed()) {
             throw new RuntimeException(
                 'Gemini embedding request failed: '
-                . $response->status()
-                . ' - '
-                . $response->json(
+                .$response->status()
+                .' - '
+                .$response->json(
                     'error.message',
                     'Unknown API error'
                 )
@@ -92,8 +92,8 @@ class EmbeddingService
         if (! is_array($values) || count($values) !== $dimensions) {
             throw new RuntimeException(
                 'Invalid embedding dimension. Expected '
-                . $dimensions
-                . ' values.'
+                .$dimensions
+                .' values.'
             );
         }
 

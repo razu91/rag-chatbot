@@ -20,12 +20,11 @@ class DocumentIngestionServiceTest extends TestCase
 
         // Never make real Gemini API calls during tests.
         Http::fake([
-            '*generativelanguage.googleapis.com/*' =>
-                Http::response([
-                    'embedding' => [
-                        'values' => array_fill(0, 1536, 0.01),
-                    ],
-                ], 200),
+            '*generativelanguage.googleapis.com/*' => Http::response([
+                'embedding' => [
+                    'values' => array_fill(0, 1536, 0.01),
+                ],
+            ], 200),
         ]);
     }
 

@@ -20,12 +20,11 @@ class ChunkSearchServiceTest extends TestCase
 
         // Prevent real Gemini API calls in automated tests.
         Http::fake([
-            '*generativelanguage.googleapis.com/*' =>
-                Http::response([
-                    'embedding' => [
-                        'values' => array_fill(0, 1536, 0.01),
-                    ],
-                ], 200),
+            '*generativelanguage.googleapis.com/*' => Http::response([
+                'embedding' => [
+                    'values' => array_fill(0, 1536, 0.01),
+                ],
+            ], 200),
         ]);
     }
 
@@ -91,8 +90,7 @@ class ChunkSearchServiceTest extends TestCase
         Http::assertSentCount(3);
 
         Http::assertSent(
-            fn ($request) =>
-                $request['taskType'] === 'RETRIEVAL_QUERY'
+            fn ($request) => $request['taskType'] === 'RETRIEVAL_QUERY'
         );
     }
 }

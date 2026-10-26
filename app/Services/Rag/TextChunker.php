@@ -21,7 +21,7 @@ class TextChunker
         }
     }
 
-     /**
+    /**
      * Split text into overlapping chunks.
      *
      * @return array<int, string>

@@ -5,7 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-
 class DocumentChunk extends Model
 {
     protected $fillable = [
@@ -24,7 +23,7 @@ class DocumentChunk extends Model
         ];
     }
 
-     public function tenant(): BelongsTo
+    public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
     }

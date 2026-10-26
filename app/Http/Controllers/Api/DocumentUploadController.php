@@ -17,7 +17,7 @@ class DocumentUploadController extends Controller
     /**
      * Handle the incoming request.
      */
-    public function __invoke(Request $request, DocumentIngestionService $ingestionService,): JsonResponse
+    public function __invoke(Request $request, DocumentIngestionService $ingestionService): JsonResponse
     {
         $validated = $request->validate([
 
@@ -25,7 +25,7 @@ class DocumentUploadController extends Controller
                 'required',
                 'file',
                 'mimes:txt',
-                'max:1024'
+                'max:1024',
             ],
 
             'title' => [
@@ -33,14 +33,14 @@ class DocumentUploadController extends Controller
                 'required',
                 'string',
                 'max:255',
-            ]
+            ],
         ]);
 
         $user = $request->user();
 
         if ($user->tenant_id === null) {
             return response()->json([
-                'message' => 'Your account is not associated with a tenant.'
+                'message' => 'Your account is not associated with a tenant.',
             ], 403);
         }
 
@@ -81,8 +81,7 @@ class DocumentUploadController extends Controller
                         $file->getClientOriginalName(),
                         PATHINFO_FILENAME
                     ),
-                'original_name' =>
-                $file->getClientOriginalName(),
+                'original_name' => $file->getClientOriginalName(),
                 'file_path' => $path,
                 'mime_type' => $file->getMimeType(),
                 'status' => 'pending',
@@ -144,8 +143,7 @@ class DocumentUploadController extends Controller
             }
 
             return response()->json([
-                'message' =>
-                'Unable to upload or process the document right now.',
+                'message' => 'Unable to upload or process the document right now.',
             ], 502);
         }
     }
