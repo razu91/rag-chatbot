@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use App\Services\Rag\RagService;
+use RuntimeException;
 use Tests\TestCase;
 
 class ChatApiTest extends TestCase
@@ -11,7 +12,7 @@ class ChatApiTest extends TestCase
     private function authenticatedUser(
         ?int $tenantId = 1
     ): User {
-        $user = new User();
+        $user = new User;
 
         $user->id = 100;
         $user->tenant_id = $tenantId;
@@ -118,5 +119,31 @@ class ChatApiTest extends TestCase
                 'message',
                 'Your account is not associated with a tenant.'
             );
+    }
+
+    public function test_chat_api_does_not_expose_internal_exception_details(): void
+    {
+        $this->authenticatedUser(1);
+
+        $this->mock(RagService::class, function ($mock) {
+            $mock->shouldReceive('answer')
+                ->once()
+                ->with('What is Laravel?', 1)
+                ->andThrow(new RuntimeException(
+                    'Sensitive database connection details'
+                ));
+        });
+
+        $response = $this->postJson('/api/chat', [
+            'question' => 'What is Laravel?',
+        ]);
+
+        $response
+            ->assertStatus(502)
+            ->assertJsonPath(
+                'message',
+                'Unable to generate an answer right now.'
+            )
+            ->assertDontSee('Sensitive database connection details');
     }
 }

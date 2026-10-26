@@ -28,7 +28,7 @@ class DocumentUploadApiTest extends TestCase
 
         $user = User::create([
             'name' => 'Test User',
-            'email' => uniqid('user_', true) . '@example.com',
+            'email' => uniqid('user_', true).'@example.com',
             'password' => 'password',
         ]);
 
@@ -172,7 +172,9 @@ class DocumentUploadApiTest extends TestCase
                 $mock->shouldReceive('ingest')
                     ->once()
                     ->andThrow(
-                        new RuntimeException('Embedding service failed.')
+                        new RuntimeException(
+                            'Sensitive embedding API key and database details.'
+                        )
                     );
             }
         );
@@ -189,6 +191,9 @@ class DocumentUploadApiTest extends TestCase
             ->assertJsonPath(
                 'message',
                 'Unable to upload or process the document right now.',
+            )
+            ->assertDontSee(
+                'Sensitive embedding API key and database details.'
             );
 
         $this->assertDatabaseCount('documents', 0);
@@ -199,7 +204,6 @@ class DocumentUploadApiTest extends TestCase
         );
     }
 
-
     public function test_it_rejects_an_empty_text_file(): void
     {
         Storage::fake('local');
@@ -209,9 +213,9 @@ class DocumentUploadApiTest extends TestCase
             'slug' => 'company-a',
         ]);
 
-        $user = new User();
+        $user = new User;
         $user->name = 'Test User';
-        $user->email = uniqid('user_', true) . '@example.com';
+        $user->email = uniqid('user_', true).'@example.com';
         $user->password = 'password';
         $user->tenant_id = $tenant->id;
         $user->save();
@@ -237,7 +241,6 @@ class DocumentUploadApiTest extends TestCase
         );
     }
 
-
     public function test_it_rejects_files_larger_than_the_upload_limit(): void
     {
         Storage::fake('local');
@@ -247,9 +250,9 @@ class DocumentUploadApiTest extends TestCase
             'slug' => 'company-a',
         ]);
 
-        $user = new User();
+        $user = new User;
         $user->name = 'Test User';
-        $user->email = uniqid('user_', true) . '@example.com';
+        $user->email = uniqid('user_', true).'@example.com';
         $user->password = 'password';
         $user->tenant_id = $tenant->id;
         $user->save();
@@ -273,5 +276,4 @@ class DocumentUploadApiTest extends TestCase
             Storage::disk('local')->allFiles('documents')
         );
     }
-
 }
