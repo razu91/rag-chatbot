@@ -7,6 +7,7 @@ use App\Models\DocumentChunk;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\Rag\DocumentIngestionService;
+use App\Services\Rag\EmbeddingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -235,7 +236,6 @@ class DocumentManagementApiTest extends TestCase
         ]);
     }
 
-
     public function test_it_updates_a_document_title_without_reingestion(): void
     {
         $tenant = $this->createTenant('company-a');
@@ -303,4 +303,224 @@ class DocumentManagementApiTest extends TestCase
             ->assertJsonValidationErrors('title');
     }
 
+    public function test_it_replaces_a_document_file_and_reingests_its_content(): void
+    {
+        Storage::fake('local');
+
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $oldPath = 'documents/old-laravel.txt';
+
+        Storage::disk('local')->put(
+            $oldPath,
+            'Old document content.',
+        );
+
+        $document = $this->createDocument($tenant, [
+            'title' => 'Old Title',
+            'file_path' => $oldPath,
+            'original_name' => 'old-laravel.txt',
+            'mime_type' => 'text/plain',
+            'status' => 'completed',
+        ]);
+
+        $service = $this->mock(
+            DocumentIngestionService::class,
+        );
+
+        $preparedChunks = [
+            [
+                'chunk_index' => 0,
+                'content' => 'New document content.',
+                'embedding' => array_fill(0, 1536, 0.1),
+            ],
+        ];
+
+        $service->shouldReceive('prepare')
+            ->once()
+            ->with('New document content.')
+            ->andReturn($preparedChunks);
+
+        $service->shouldReceive('replaceChunks')
+            ->once()
+            ->withArgs(function ($updatedDocument, $chunks) use (
+                $document,
+                $preparedChunks,
+            ): bool {
+                return $updatedDocument->id === $document->id
+                    && $chunks === $preparedChunks;
+            })
+            ->andReturn(1);
+
+        $file = UploadedFile::fake()->createWithContent(
+            'new-laravel.txt',
+            'New document content.',
+        );
+
+        $this->patch("/api/documents/{$document->id}", [
+            'title' => 'Updated Title',
+            'file' => $file,
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertOk()
+            ->assertJsonPath('document.title', 'Updated Title')
+            ->assertJsonPath('document.original_name', 'new-laravel.txt')
+            ->assertJsonPath('document.status', 'completed');
+
+        $updatedDocument = $document->fresh();
+
+        $this->assertSame('Updated Title', $updatedDocument->title);
+        $this->assertSame('new-laravel.txt', $updatedDocument->original_name);
+        $this->assertNotSame($oldPath, $updatedDocument->file_path);
+
+        Storage::disk('local')->assertExists($updatedDocument->file_path);
+        Storage::disk('local')->assertMissing($oldPath);
+    }
+
+    public function test_it_preserves_the_existing_document_when_reingestion_fails(): void
+    {
+        Storage::fake('local');
+
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $oldPath = 'documents/old-laravel.txt';
+
+        Storage::disk('local')->put(
+            $oldPath,
+            'Old document content.',
+        );
+
+        $document = $this->createDocument($tenant, [
+            'title' => 'Original Title',
+            'file_path' => $oldPath,
+            'original_name' => 'old-laravel.txt',
+            'mime_type' => 'text/plain',
+            'status' => 'completed',
+        ]);
+
+        $chunk = DocumentChunk::create([
+            'tenant_id' => $tenant->id,
+            'document_id' => $document->id,
+            'chunk_index' => 0,
+            'content' => 'Existing chunk content.',
+            'metadata' => [],
+        ]);
+
+        $service = $this->mock(
+            DocumentIngestionService::class,
+        );
+
+        $service->shouldReceive('prepare')
+            ->once()
+            ->with('Replacement content.')
+            ->andThrow(new \RuntimeException(
+                'Embedding generation failed.',
+            ));
+
+        $service->shouldNotReceive('replaceChunks');
+
+        $file = UploadedFile::fake()->createWithContent(
+            'replacement.txt',
+            'Replacement content.',
+        );
+
+        $this->patch("/api/documents/{$document->id}", [
+            'title' => 'Changed Title',
+            'file' => $file,
+        ], [
+            'Accept' => 'application/json',
+        ])->assertStatus(502);
+
+        $document->refresh();
+
+        $this->assertSame('Original Title', $document->title);
+        $this->assertSame($oldPath, $document->file_path);
+        $this->assertSame('old-laravel.txt', $document->original_name);
+        $this->assertSame('completed', $document->status);
+
+        $this->assertDatabaseHas('document_chunks', [
+            'id' => $chunk->id,
+            'content' => 'Existing chunk content.',
+        ]);
+
+        Storage::disk('local')->assertExists($oldPath);
+    }
+
+    public function test_file_replacement_persists_new_chunks_in_the_database(): void
+    {
+        Storage::fake('local');
+
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $oldPath = 'documents/old-file.txt';
+
+        Storage::disk('local')->put(
+            $oldPath,
+            'Old document content.',
+        );
+
+        $document = $this->createDocument($tenant, [
+            'file_path' => $oldPath,
+            'original_name' => 'old-file.txt',
+            'status' => 'completed',
+        ]);
+
+        $oldChunk = DocumentChunk::create([
+            'tenant_id' => $tenant->id,
+            'document_id' => $document->id,
+            'chunk_index' => 0,
+            'content' => 'Old chunk content.',
+            'metadata' => [],
+        ]);
+
+        $embeddingService = $this->mock(
+            EmbeddingService::class,
+        );
+
+        $embeddingService->shouldReceive('embedDocument')
+            ->once()
+            ->with('Replacement document content.')
+            ->andReturn(array_fill(0, 1536, 0.1));
+
+        $file = UploadedFile::fake()->createWithContent(
+            'replacement.txt',
+            'Replacement document content.',
+        );
+
+        $this->patch("/api/documents/{$document->id}", [
+            'file' => $file,
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertOk()
+            ->assertJsonPath(
+                'document.original_name',
+                'replacement.txt',
+            );
+
+        $this->assertDatabaseMissing('document_chunks', [
+            'id' => $oldChunk->id,
+        ]);
+
+        $this->assertDatabaseHas('document_chunks', [
+            'tenant_id' => $tenant->id,
+            'document_id' => $document->id,
+            'chunk_index' => 0,
+            'content' => 'Replacement document content.',
+        ]);
+
+        $this->assertDatabaseCount('document_chunks', 1);
+
+        $updatedDocument = $document->fresh();
+
+        Storage::disk('local')->assertExists(
+            $updatedDocument->file_path,
+        );
+
+        Storage::disk('local')->assertMissing($oldPath);
+    }
 }
