@@ -19,6 +19,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/documents/{id}', [DocumentController::class, 'show'])
         ->whereNumber('id');
 
+    Route::patch('/documents/{id}', [
+        DocumentController::class,
+        'update',
+    ])->whereNumber('id');
+
     Route::delete('/documents/{id}', [
         DocumentController::class,
         'destroy',

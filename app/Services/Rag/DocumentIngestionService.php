@@ -15,9 +15,15 @@ class DocumentIngestionService
     ) {}
 
     /**
-     * Split text, generate embeddings and store document chunks.
+     * Generate chunks and embeddings without changing existing chunks.
+     *
+     * @return array<int, array{
+     *     chunk_index: int,
+     *     content: string,
+     *     embedding: array<float>
+     * }>
      */
-    public function ingest(Document $document, string $text): int
+    public function prepare(string $text): array
     {
         if (trim($text) === '') {
             throw new InvalidArgumentException(
@@ -33,64 +39,93 @@ class DocumentIngestionService
             );
         }
 
+        $prepared = [];
+
+        foreach ($chunks as $index => $content) {
+            $prepared[] = [
+                'chunk_index' => $index,
+                'content' => $content,
+                'embedding' => $this->embeddingService
+                    ->embedDocument($content),
+            ];
+        }
+
+        return $prepared;
+    }
+
+    /**
+     * Replace document chunks using prepared embeddings.
+     *
+     * @param array<int, array{
+     *     chunk_index: int,
+     *     content: string,
+     *     embedding: array<float>
+     * }> $prepared
+     */
+    public function replaceChunks(
+        Document $document,
+        array $prepared,
+    ): int {
+        if ($prepared === []) {
+            throw new InvalidArgumentException(
+                'Prepared document chunks cannot be empty.'
+            );
+        }
+
+        DB::transaction(function () use (
+            $document,
+            $prepared
+        ): void {
+            $document->chunks()->delete();
+
+            foreach ($prepared as $chunk) {
+                $vector = '['.implode(
+                    ',',
+                    $chunk['embedding']
+                ).']';
+
+                DB::insert(
+                    <<<'SQL'
+                    INSERT INTO document_chunks (
+                        tenant_id,
+                        document_id,
+                        chunk_index,
+                        content,
+                        embedding,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, CAST(? AS vector), NOW(), NOW())
+                    SQL,
+                    [
+                        $document->tenant_id,
+                        $document->id,
+                        $chunk['chunk_index'],
+                        $chunk['content'],
+                        $vector,
+                    ],
+                );
+            }
+        });
+
+        return count($prepared);
+    }
+
+    /**
+     * Preserve the existing ingestion behavior for new documents.
+     */
+    public function ingest(Document $document, string $text): int
+    {
         $document->update(['status' => 'processing']);
 
         try {
-            // Generate embeddings before changing existing chunks.
-            $embeddedChunks = [];
+            $prepared = $this->prepare($text);
 
-            foreach ($chunks as $index => $content) {
-                $embedding = $this->embeddingService
-                    ->embedDocument($content);
-
-                $embeddedChunks[] = [
-                    'tenant_id' => $document->tenant_id,
-                    'document_id' => $document->id,
-                    'chunk_index' => $index,
-                    'content' => $content,
-                    'embedding' => $embedding,
-                ];
-            }
-
-            DB::transaction(function () use (
-                $document,
-                $embeddedChunks
-            ): void {
-                $document->chunks()->delete();
-
-                foreach ($embeddedChunks as $chunk) {
-                    $vector = '['.implode(
-                        ',',
-                        $chunk['embedding']
-                    ).']';
-
-                    DB::insert(
-                        <<<'SQL'
-                        INSERT INTO document_chunks (
-                            tenant_id,
-                            document_id,
-                            chunk_index,
-                            content,
-                            embedding,
-                            created_at,
-                            updated_at
-                        )
-                        VALUES (?, ?, ?, ?, CAST(? AS vector), NOW(), NOW())
-                        SQL,
-                        [
-                            $chunk['tenant_id'],
-                            $chunk['document_id'],
-                            $chunk['chunk_index'],
-                            $chunk['content'],
-                            $vector,
-                        ]
-                    );
-                }
-            });
+            $count = $this->replaceChunks($document, $prepared);
 
             $document->update(['status' => 'completed']);
 
-            return count($embeddedChunks);
+            return $count;
         } catch (Throwable $exception) {
             $document->update(['status' => 'failed']);
 

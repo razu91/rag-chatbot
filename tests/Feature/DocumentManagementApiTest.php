@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\DocumentChunk;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\Rag\DocumentIngestionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -233,4 +234,73 @@ class DocumentManagementApiTest extends TestCase
             'tenant_id' => $tenant->id,
         ]);
     }
+
+
+    public function test_it_updates_a_document_title_without_reingestion(): void
+    {
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $document = $this->createDocument($tenant, [
+            'title' => 'Old Title',
+            'status' => 'completed',
+        ]);
+
+        $this->mock(
+            DocumentIngestionService::class,
+            function ($mock): void {
+                $mock->shouldNotReceive('prepare');
+                $mock->shouldNotReceive('replaceChunks');
+                $mock->shouldNotReceive('ingest');
+            }
+        );
+
+        $this->patchJson("/api/documents/{$document->id}", [
+            'title' => 'Updated Title',
+        ])
+            ->assertOk()
+            ->assertJsonPath('document.title', 'Updated Title');
+
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'title' => 'Updated Title',
+            'status' => 'completed',
+        ]);
+    }
+
+    public function test_it_cannot_update_another_tenants_document(): void
+    {
+        $tenantA = $this->createTenant('company-a');
+        $tenantB = $this->createTenant('company-b');
+
+        $this->authenticateAsTenant($tenantA);
+
+        $document = $this->createDocument($tenantB, [
+            'title' => 'Private Document',
+        ]);
+
+        $this->patchJson("/api/documents/{$document->id}", [
+            'title' => 'Modified by another tenant',
+        ])->assertNotFound();
+
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'tenant_id' => $tenantB->id,
+            'title' => 'Private Document',
+        ]);
+    }
+
+    public function test_it_validates_document_update_title(): void
+    {
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $document = $this->createDocument($tenant);
+
+        $this->patchJson("/api/documents/{$document->id}", [
+            'title' => str_repeat('a', 256),
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('title');
+    }
+
 }

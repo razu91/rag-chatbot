@@ -110,4 +110,38 @@ class DocumentController extends Controller
             'message' => 'Document deleted successfully.',
         ]);
     }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user->tenant_id) {
+            return response()->json([
+                'message' => 'User is not associated with a tenant.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'title' => ['sometimes', 'required', 'string', 'max:255'],
+        ]);
+
+        if (! array_key_exists('title', $validated)) {
+            return response()->json([
+                'message' => 'No valid fields provided for update.',
+            ], 422);
+        }
+
+        $document = Document::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->findOrFail($id);
+
+        $document->update([
+            'title' => $validated['title'],
+        ]);
+
+        return response()->json([
+            'message' => 'Document updated successfully.',
+            'document' => $document->fresh(),
+        ]);
+    }
 }
