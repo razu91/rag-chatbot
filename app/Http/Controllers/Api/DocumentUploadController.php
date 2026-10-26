@@ -7,6 +7,8 @@ use App\Models\Document;
 use App\Services\Rag\DocumentIngestionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
@@ -43,6 +45,8 @@ class DocumentUploadController extends Controller
         }
 
         $file = $validated['file'];
+        $path = null;
+        $document = null;
 
         try {
             // Store the uploaded file on Laravel's private local disk.
@@ -94,9 +98,47 @@ class DocumentUploadController extends Controller
             ], 201);
         } catch (Throwable $exception) {
             report($exception);
+
+            // Remove the database record and its chunks.
+            if ($document instanceof Document) {
+                try {
+                    $document->delete();
+                } catch (Throwable $cleanupException) {
+                    report($cleanupException);
+
+                    Log::warning(
+                        'Unable to clean up a failed document record.',
+                        [
+                            'document_id' => $document->id,
+                        ]
+                    );
+                }
+            }
+
+            // Remove the uploaded file independently.
+            if (is_string($path) && $path !== '') {
+                try {
+                    $deleted = Storage::disk('local')->delete($path);
+
+                    if (! $deleted) {
+                        Log::warning(
+                            'Unable to clean up a failed document file.',
+                            ['file_path' => $path]
+                        );
+                    }
+                } catch (Throwable $cleanupException) {
+                    report($cleanupException);
+
+                    Log::warning(
+                        'An exception occurred during document file cleanup.',
+                        ['file_path' => $path]
+                    );
+                }
+            }
+
             return response()->json([
                 'message' =>
-                'Unable to upload or process the document right now.',
+                    'Unable to upload or process the document right now.',
             ], 502);
         }
     }

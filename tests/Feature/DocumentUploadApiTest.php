@@ -190,5 +190,12 @@ class DocumentUploadApiTest extends TestCase
                 'message',
                 'Unable to upload or process the document right now.',
             );
+
+        $this->assertDatabaseCount('documents', 0);
+
+        $this->assertSame(
+            [],
+            Storage::disk('local')->allFiles('documents')
+        );
     }
 }

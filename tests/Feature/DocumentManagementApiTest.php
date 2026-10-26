@@ -164,4 +164,38 @@ class DocumentManagementApiTest extends TestCase
         $this->getJson('/api/documents/999999')
             ->assertNotFound();
     }
+
+
+    public function test_deleting_a_document_also_deletes_its_chunks(): void
+    {
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $document = $this->createDocument($tenant);
+
+        $chunk = \App\Models\DocumentChunk::create([
+            'tenant_id' => $tenant->id,
+            'document_id' => $document->id,
+            'chunk_index' => 0,
+            'content' => 'This is a test document chunk.',
+            'metadata' => [],
+        ]);
+
+        $this->assertDatabaseHas('document_chunks', [
+            'id' => $chunk->id,
+            'document_id' => $document->id,
+        ]);
+
+        $this->deleteJson("/api/documents/{$document->id}")
+            ->assertOk();
+
+        $this->assertDatabaseMissing('documents', [
+            'id' => $document->id,
+        ]);
+
+        $this->assertDatabaseMissing('document_chunks', [
+            'id' => $chunk->id,
+        ]);
+    }
+
 }
