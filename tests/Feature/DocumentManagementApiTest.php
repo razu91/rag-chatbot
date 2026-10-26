@@ -25,10 +25,10 @@ class DocumentManagementApiTest extends TestCase
 
     private function authenticateAsTenant(Tenant $tenant): User
     {
-        $user = new User();
+        $user = new User;
 
         $user->name = 'Test User';
-        $user->email = uniqid('user_', true) . '@example.com';
+        $user->email = uniqid('user_', true).'@example.com';
         $user->password = 'password';
         $user->tenant_id = $tenant->id;
         $user->save();
@@ -165,7 +165,6 @@ class DocumentManagementApiTest extends TestCase
             ->assertNotFound();
     }
 
-
     public function test_deleting_a_document_also_deletes_its_chunks(): void
     {
         $tenant = $this->createTenant('company-a');
@@ -173,7 +172,7 @@ class DocumentManagementApiTest extends TestCase
 
         $document = $this->createDocument($tenant);
 
-        $chunk = \App\Models\DocumentChunk::create([
+        $chunk = DocumentChunk::create([
             'tenant_id' => $tenant->id,
             'document_id' => $document->id,
             'chunk_index' => 0,
@@ -198,4 +197,40 @@ class DocumentManagementApiTest extends TestCase
         ]);
     }
 
+    public function test_unauthenticated_users_cannot_show_or_delete_documents(): void
+    {
+        $this->getJson('/api/documents/1')
+            ->assertUnauthorized();
+
+        $this->deleteJson('/api/documents/1')
+            ->assertUnauthorized();
+    }
+
+    public function test_user_without_tenant_cannot_manage_documents(): void
+    {
+        $tenant = $this->createTenant('company-a');
+        $document = $this->createDocument($tenant);
+
+        $user = new User;
+        $user->name = 'Tenantless User';
+        $user->email = uniqid('tenantless_', true).'@example.com';
+        $user->password = 'password';
+        $user->save();
+
+        $this->actingAs($user, 'sanctum');
+
+        $this->getJson('/api/documents')
+            ->assertForbidden();
+
+        $this->getJson("/api/documents/{$document->id}")
+            ->assertForbidden();
+
+        $this->deleteJson("/api/documents/{$document->id}")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'tenant_id' => $tenant->id,
+        ]);
+    }
 }
