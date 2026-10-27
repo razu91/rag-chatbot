@@ -682,4 +682,71 @@ class DocumentManagementApiTest extends TestCase
             Storage::disk('local')->allFiles('documents'),
         );
     }
+
+    public function test_it_rejects_an_empty_replacement_file_and_preserves_existing_data(): void
+    {
+        Storage::fake('local');
+
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $oldPath = 'documents/original.txt';
+
+        Storage::disk('local')->put(
+            $oldPath,
+            'Original document content.',
+        );
+
+        $document = $this->createDocument($tenant, [
+            'title' => 'Original Title',
+            'file_path' => $oldPath,
+            'original_name' => 'original.txt',
+            'mime_type' => 'text/plain',
+            'status' => 'completed',
+        ]);
+
+        $oldChunk = DocumentChunk::create([
+            'tenant_id' => $tenant->id,
+            'document_id' => $document->id,
+            'chunk_index' => 0,
+            'content' => 'Original chunk content.',
+            'metadata' => [],
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent(
+            'empty.txt',
+            '',
+        );
+
+        $this->patch("/api/documents/{$document->id}", [
+            'file' => $file,
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath(
+                'message',
+                'Document text cannot be empty.',
+            );
+
+        $document->refresh();
+
+        $this->assertSame('Original Title', $document->title);
+        $this->assertSame($oldPath, $document->file_path);
+        $this->assertSame('original.txt', $document->original_name);
+        $this->assertSame('completed', $document->status);
+
+        $this->assertDatabaseHas('document_chunks', [
+            'id' => $oldChunk->id,
+            'content' => 'Original chunk content.',
+        ]);
+
+        Storage::disk('local')->assertExists($oldPath);
+
+        $this->assertSame(
+            [$oldPath],
+            Storage::disk('local')->allFiles('documents'),
+            'The empty replacement file should be deleted.',
+        );
+    }
 }
