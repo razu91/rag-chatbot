@@ -206,6 +206,10 @@ class DocumentManagementApiTest extends TestCase
 
         $this->deleteJson('/api/documents/1')
             ->assertUnauthorized();
+
+        $this->patchJson('/api/documents/1', [
+            'title' => 'Unauthorized Update',
+        ])->assertUnauthorized();
     }
 
     public function test_user_without_tenant_cannot_manage_documents(): void
@@ -229,6 +233,10 @@ class DocumentManagementApiTest extends TestCase
 
         $this->deleteJson("/api/documents/{$document->id}")
             ->assertForbidden();
+
+        $this->patchJson("/api/documents/{$document->id}", [
+            'title' => 'Unauthorized Update',
+        ])->assertForbidden();
 
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,
