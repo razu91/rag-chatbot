@@ -523,4 +523,155 @@ class DocumentManagementApiTest extends TestCase
 
         Storage::disk('local')->assertMissing($oldPath);
     }
+
+    public function test_it_preserves_existing_data_when_chunk_replacement_fails(): void
+    {
+        Storage::fake('local');
+
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $oldPath = 'documents/old-file.txt';
+
+        Storage::disk('local')->put(
+            $oldPath,
+            'Original document content.',
+        );
+
+        $document = $this->createDocument($tenant, [
+            'title' => 'Original Title',
+            'file_path' => $oldPath,
+            'original_name' => 'old-file.txt',
+            'mime_type' => 'text/plain',
+            'status' => 'completed',
+        ]);
+
+        $oldChunk = DocumentChunk::create([
+            'tenant_id' => $tenant->id,
+            'document_id' => $document->id,
+            'chunk_index' => 0,
+            'content' => 'Original chunk content.',
+            'metadata' => [],
+        ]);
+
+        $preparedChunks = [
+            [
+                'chunk_index' => 0,
+                'content' => 'Replacement document content.',
+                'embedding' => array_fill(0, 1536, 0.1),
+            ],
+        ];
+
+        $service = $this->mock(DocumentIngestionService::class);
+
+        $service->shouldReceive('prepare')
+            ->once()
+            ->with('Replacement document content.')
+            ->andReturn($preparedChunks);
+
+        $service->shouldReceive('replaceChunks')
+            ->once()
+            ->andThrow(new \RuntimeException(
+                'Simulated chunk database failure.',
+            ));
+
+        $file = UploadedFile::fake()->createWithContent(
+            'replacement.txt',
+            'Replacement document content.',
+        );
+
+        $this->patch("/api/documents/{$document->id}", [
+            'title' => 'Changed Title',
+            'file' => $file,
+        ], [
+            'Accept' => 'application/json',
+        ])->assertStatus(502);
+
+        $document->refresh();
+
+        $this->assertSame('Original Title', $document->title);
+        $this->assertSame($oldPath, $document->file_path);
+        $this->assertSame('old-file.txt', $document->original_name);
+        $this->assertSame('completed', $document->status);
+
+        $this->assertDatabaseHas('document_chunks', [
+            'id' => $oldChunk->id,
+            'content' => 'Original chunk content.',
+        ]);
+
+        Storage::disk('local')->assertExists($oldPath);
+
+        $this->assertSame(
+            [$oldPath],
+            Storage::disk('local')->allFiles('documents'),
+            'The failed replacement should not leave the new file behind.',
+        );
+    }
+
+    public function test_it_rejects_an_empty_document_update(): void
+    {
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $document = $this->createDocument($tenant, [
+            'title' => 'Original Title',
+            'status' => 'completed',
+        ]);
+
+        $this->patchJson("/api/documents/{$document->id}", [])
+            ->assertUnprocessable();
+
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'title' => 'Original Title',
+            'status' => 'completed',
+        ]);
+    }
+
+    public function test_it_rejects_a_non_text_replacement_file(): void
+    {
+        Storage::fake('local');
+
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $oldPath = 'documents/original.txt';
+
+        Storage::disk('local')->put(
+            $oldPath,
+            'Original document content.',
+        );
+
+        $document = $this->createDocument($tenant, [
+            'title' => 'Original Title',
+            'file_path' => $oldPath,
+            'original_name' => 'original.txt',
+            'status' => 'completed',
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent(
+            'malicious.pdf',
+            'This is not a text document.',
+        );
+
+        $this->patch("/api/documents/{$document->id}", [
+            'file' => $file,
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('file');
+
+        $document->refresh();
+
+        $this->assertSame('Original Title', $document->title);
+        $this->assertSame($oldPath, $document->file_path);
+        $this->assertSame('original.txt', $document->original_name);
+
+        Storage::disk('local')->assertExists($oldPath);
+        $this->assertSame(
+            [$oldPath],
+            Storage::disk('local')->allFiles('documents'),
+        );
+    }
 }
