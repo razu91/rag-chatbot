@@ -749,4 +749,94 @@ class DocumentManagementApiTest extends TestCase
             'The empty replacement file should be deleted.',
         );
     }
+
+    public function test_it_rejects_a_stale_file_replacement(): void
+    {
+        Storage::fake('local');
+
+        $tenant = $this->createTenant('company-a');
+        $this->authenticateAsTenant($tenant);
+
+        $oldPath = 'documents/old-file.txt';
+        $winningPath = 'documents/winning-file.txt';
+
+        Storage::disk('local')->put(
+            $oldPath,
+            'Original document content.',
+        );
+
+        $document = $this->createDocument($tenant, [
+            'title' => 'Original Title',
+            'file_path' => $oldPath,
+            'original_name' => 'old-file.txt',
+            'mime_type' => 'text/plain',
+            'status' => 'completed',
+        ]);
+
+        $service = $this->mock(DocumentIngestionService::class);
+
+        $service->shouldReceive('prepare')
+            ->once()
+            ->with('Stale replacement content.')
+            ->andReturnUsing(function () use (
+                $document,
+                $oldPath,
+                $winningPath,
+            ): array {
+                // Simulate another request updating the document
+                // while this request prepares its replacement.
+                Storage::disk('local')->put(
+                    $winningPath,
+                    'Winning replacement content.',
+                );
+
+                Document::query()
+                    ->whereKey($document->id)
+                    ->update([
+                        'file_path' => $winningPath,
+                        'original_name' => 'winning-file.txt',
+                        'title' => 'Winning Title',
+                    ]);
+
+                Storage::disk('local')->delete($oldPath);
+
+                return [
+                    [
+                        'chunk_index' => 0,
+                        'content' => 'Stale replacement content.',
+                        'embedding' => array_fill(0, 1536, 0.1),
+                    ],
+                ];
+            });
+
+        $service->shouldNotReceive('replaceChunks');
+
+        $file = UploadedFile::fake()->createWithContent(
+            'stale-replacement.txt',
+            'Stale replacement content.',
+        );
+
+        $this->patch("/api/documents/{$document->id}", [
+            'file' => $file,
+        ], [
+            'Accept' => 'application/json',
+        ])->assertStatus(409);
+
+        $document->refresh();
+
+        $this->assertSame($winningPath, $document->file_path);
+        $this->assertSame('winning-file.txt', $document->original_name);
+        $this->assertSame('Winning Title', $document->title);
+
+        Storage::disk('local')->assertExists($winningPath);
+        Storage::disk('local')->assertMissing($oldPath);
+        Storage::disk('local')->assertMissing(
+            'documents/stale-replacement.txt',
+        );
+
+        $this->assertCount(
+            1,
+            Storage::disk('local')->allFiles('documents'),
+        );
+    }
 }

@@ -114,6 +114,7 @@ class DocumentController extends Controller
         ]);
     }
 
+
     public function update(
         Request $request,
         int $id,
@@ -121,7 +122,7 @@ class DocumentController extends Controller
     ): JsonResponse {
         $user = $request->user();
 
-        if (! $user->tenant_id) {
+        if ($user->tenant_id === null) {
             return response()->json([
                 'message' => 'User is not associated with a tenant.',
             ], 403);
@@ -158,6 +159,8 @@ class DocumentController extends Controller
         }
 
         $disk = Storage::disk('local');
+
+        // Capture the version this request intends to replace.
         $oldPath = $document->file_path;
         $newPath = null;
 
@@ -181,19 +184,35 @@ class DocumentController extends Controller
                 ], 422);
             }
 
-            // Prepare chunks and embeddings before modifying existing data.
+            // Prepare embeddings before acquiring a database row lock.
             $prepared = $ingestionService->prepare($text);
 
             DB::transaction(function () use (
-                $document,
+                $user,
+                $id,
+                $oldPath,
                 $validated,
                 $file,
                 $newPath,
                 $prepared,
                 $ingestionService,
             ): void {
-                $document->update([
-                    'title' => $validated['title'] ?? $document->title,
+                $lockedDocument = Document::query()
+                    ->where('tenant_id', $user->tenant_id)
+                    ->whereKey($id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                // Reject a replacement prepared against an older version.
+                if ($lockedDocument->file_path !== $oldPath) {
+                    throw new \RuntimeException(
+                        'STALE_DOCUMENT_REPLACEMENT'
+                    );
+                }
+
+                $lockedDocument->update([
+                    'title' => $validated['title']
+                        ?? $lockedDocument->title,
                     'file_path' => $newPath,
                     'original_name' => $file->getClientOriginalName(),
                     'mime_type' => $file->getClientMimeType(),
@@ -201,7 +220,7 @@ class DocumentController extends Controller
                 ]);
 
                 $ingestionService->replaceChunks(
-                    $document,
+                    $lockedDocument,
                     $prepared,
                 );
             });
@@ -211,8 +230,14 @@ class DocumentController extends Controller
                 $disk->delete($newPath);
             }
 
+            if ($exception->getMessage() === 'STALE_DOCUMENT_REPLACEMENT') {
+                return response()->json([
+                    'message' => 'This document was changed by another request. Please retry.',
+                ], 409);
+            }
+
             Log::error('Document replacement failed.', [
-                'document_id' => $document->id,
+                'document_id' => $id,
                 'exception' => $exception->getMessage(),
             ]);
 
@@ -221,18 +246,18 @@ class DocumentController extends Controller
             ], 502);
         }
 
-        // The database transaction succeeded. The old file is no longer needed.
+        // Delete the previous file only after the transaction succeeds.
         if ($oldPath && $oldPath !== $newPath) {
             try {
                 if (! $disk->delete($oldPath)) {
                     Log::warning('Unable to delete the previous document file.', [
-                        'document_id' => $document->id,
+                        'document_id' => $id,
                         'file_path' => $oldPath,
                     ]);
                 }
             } catch (Throwable $exception) {
                 Log::warning('Previous document file cleanup failed.', [
-                    'document_id' => $document->id,
+                    'document_id' => $id,
                     'file_path' => $oldPath,
                     'exception' => $exception->getMessage(),
                 ]);
@@ -244,4 +269,5 @@ class DocumentController extends Controller
             'document' => $document->fresh(),
         ]);
     }
+
 }
