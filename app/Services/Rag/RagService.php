@@ -54,33 +54,51 @@ class RagService
             );
         }
 
+        $payload = [
+            'systemInstruction' => [
+                'parts' => [[
+                    'text' => 'Answer only from the provided context. If the context does not contain the answer, say you cannot find the answer in the supplied documents. Do not invent facts.',
+                ]],
+            ],
+            'contents' => [[
+                'role' => 'user',
+                'parts' => [[
+                    'text' => "Context:\n{$context}\n\nQuestion:\n{$question}",
+                ]],
+            ]],
+            'generationConfig' => [
+                'temperature' => 0.2,
+            ],
+        ];
+
         $response = Http::acceptJson()
             ->withHeaders(['x-goog-api-key' => $apiKey])
             ->timeout(60)
+            ->retry(
+                3,
+                1000,
+                function ($exception, $request, $response = null) {
+                    return $exception instanceof \Illuminate\Http\Client\ConnectionException
+                        || ($response && in_array($response->status(), [429, 503], true));
+                },
+                throw: false
+            )
             ->post(
                 "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent",
-                [
-                    'systemInstruction' => [
-                        'parts' => [[
-                            'text' => 'Answer only from the provided context. If the context does not contain the answer, say you cannot find the answer in the supplied documents. Do not invent facts.',
-                        ]],
-                    ],
-                    'contents' => [[
-                        'role' => 'user',
-                        'parts' => [[
-                            'text' => "Context:\n{$context}\n\nQuestion:\n{$question}",
-                        ]],
-                    ]],
-                    'generationConfig' => [
-                        'temperature' => 0.2,
-                    ],
-                ]
+                $payload
             );
 
         if ($response->failed()) {
+            \Illuminate\Support\Facades\Log::error(
+                'Gemini answer generation failed',
+                [
+                    'status' => $response->status(),
+                    'body' => $response->json() ?? $response->body(),
+                ]
+            );
+
             throw new RuntimeException(
-                'Gemini answer generation failed: '
-                .$response->status()
+                'Gemini answer generation failed: '.$response->status()
             );
         }
 
