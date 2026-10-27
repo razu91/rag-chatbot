@@ -1,27 +1,27 @@
 # Laravel RAG Chatbot
 
-A Retrieval-Augmented Generation (RAG) chatbot built with **Laravel 13, PHP, PostgreSQL, pgvector, and Google Gemini**. The project demonstrates document ingestion, vector embeddings, tenant-scoped semantic search, and context-grounded AI responses through a REST API.
+A multi-tenant **Retrieval-Augmented Generation (RAG) chatbot API** built with Laravel 13, PHP 8.4, PostgreSQL, pgvector, and Google Gemini.
 
-> **Project status:** Active development. Core ingestion, semantic search, and chat API components are implemented, with automated tests covering the current functionality.
+The application ingests text documents, generates vector embeddings, retrieves relevant content using tenant-scoped semantic search, and generates context-grounded answers with source references.
 
-## Overview
+**Project status:** MVP implemented and verified through automated tests and a successful live RAG workflow.
 
-Large language models can generate inaccurate answers when they lack relevant information about a particular knowledge base. This project explores a RAG-based approach that retrieves relevant document chunks and provides them as context to an AI model before generating an answer.
+## Features
 
-The goal is to build a backend foundation for a document-aware chatbot that can answer questions using information retrieved from stored documents rather than relying solely on the model's general knowledge.
-
-## Key Features
-
-- **Document ingestion:** Processes document text into manageable chunks.
-- **Text chunking:** Splits text into overlapping chunks to preserve context between adjacent segments.
-- **Vector embeddings:** Uses Google's Gemini embedding model to convert document text and user questions into numerical vectors.
-- **Vector storage:** Stores embeddings in PostgreSQL using the pgvector extension.
-- **Semantic search:** Retrieves relevant document chunks based on query embeddings.
-- **Tenant-scoped retrieval:** Restricts semantic search to the requested tenant's data.
-- **RAG answer generation:** Supplies retrieved document context to Gemini to generate context-grounded answers.
-- **Source references:** Returns retrieved chunk information alongside the generated answer.
-- **Re-ingestion support:** Replaces existing document chunks when a document is ingested again.
-- **Automated testing:** Includes unit and feature tests for chunking, ingestion, semantic search, and chat API behavior.
+- **Document ingestion:** Upload and process text documents into manageable chunks.
+- **Text chunking:** Split documents into overlapping chunks to preserve contextual continuity.
+- **Vector embeddings:** Generate embeddings using Google's Gemini embedding model.
+- **Vector database:** Store document chunks and embeddings in PostgreSQL with pgvector.
+- **Semantic search:** Retrieve relevant document chunks using vector similarity.
+- **Multi-tenant isolation:** Restrict document access and semantic retrieval to the authenticated user's tenant.
+- **AI answer generation:** Use retrieved document context to generate answers with Gemini.
+- **Source references:** Return relevant chunk content and document identifiers with answers.
+- **Document management:** List, view, update, replace, and delete documents with tenant-scoped authorization.
+- **Re-ingestion:** Replace existing document chunks when document content is processed again.
+- **API authentication:** Protect API endpoints using Laravel Sanctum bearer tokens.
+- **Input validation:** Validate chat questions and document uploads.
+- **Error handling:** Return API errors without exposing internal exception details.
+- **Automated testing:** Test core services, API behavior, authentication, document operations, and tenant isolation.
 
 ## Technology Stack
 
@@ -29,81 +29,206 @@ The goal is to build a backend foundation for a document-aware chatbot that can 
 |---|---|
 | PHP 8.4 | Backend programming language |
 | Laravel 13 | Application framework and REST API |
-| PostgreSQL | Relational database |
+| Laravel Sanctum | API token authentication |
+| PostgreSQL 18 | Relational database |
 | pgvector | Vector storage and similarity search |
-| Google Gemini API | Embedding generation and AI responses |
-| PHPUnit / Laravel testing | Automated testing |
-| Git and GitHub | Version control and source code hosting |
+| Google Gemini API | Embeddings and AI answer generation |
+| Docker Compose | Local database environment |
+| PHPUnit / Laravel testing | Automated tests |
+| Git and GitHub | Version control and source hosting |
 
 ## Architecture
 
-The application follows a retrieval-augmented generation workflow:
+### Document ingestion
 
 ```text
-                 DOCUMENT INGESTION
-
-Document Text
-     |
-     v
-Text Chunker
-     |
-     v
-Gemini Embeddings
-     |
-     v
-PostgreSQL + pgvector
-     |
-     |  Stored document chunks
-     v
-
-                  QUESTION ANSWERING
-
-User Question
-     |
-     v
-Query Embedding
-     |
-     v
-Tenant-Scoped Semantic Search
-     |
-     v
-Relevant Document Chunks
-     |
-     v
-Context + User Question
-     |
-     v
-Gemini Answer Generation
-     |
-     v
-Answer + Source References
+              TEXT DOCUMENT
+                    |
+                    v
+        Document Ingestion Service
+                    |
+                    v
+                TextChunker
+                    |
+                    v
+          Gemini Embedding Model
+                    |
+                    v
+             PostgreSQL
+              + pgvector
+                    |
+                    v
+          Stored Document Chunks
 ```
 
-### Core Components
+### Question answering
 
-- `TextChunker` — splits text into overlapping chunks.
+```text
+             Authenticated User
+                    |
+                    v
+              POST /api/chat
+                    |
+                    v
+        Resolve Authenticated Tenant
+                    |
+                    v
+          Generate Query Embedding
+                    |
+                    v
+       Tenant-Scoped Semantic Search
+                    |
+                    v
+        Relevant Document Chunks
+                    |
+                    v
+          Context + User Question
+                    |
+                    v
+          Gemini Answer Generation
+                    |
+                    v
+            Answer + Sources
+```
+
+## Core Components
+
+- `TextChunker` — splits document text into overlapping chunks.
 - `EmbeddingService` — generates document and query embeddings.
-- `DocumentIngestionService` — generates embeddings and stores document chunks.
-- `ChunkSearchService` — retrieves relevant chunks within a tenant's scope.
-- `RagService` — coordinates retrieval and AI answer generation.
-- `ChatController` — exposes the chat functionality through an HTTP endpoint.
+- `DocumentIngestionService` — processes documents, generates embeddings, and stores chunks.
+- `ChunkSearchService` — performs tenant-scoped vector similarity search.
+- `RagService` — coordinates retrieval and Gemini answer generation.
+- `ChatController` — exposes chat functionality through the authenticated API.
+
+## Getting Started
+
+### Prerequisites
+
+- PHP 8.4 or a compatible version
+- Composer
+- Docker Engine
+- Docker Compose v2
+- A Google Gemini API key
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/razu91/rag-chatbot.git
+cd rag-chatbot
+```
+
+### 2. Start PostgreSQL with pgvector
+
+The project includes a `compose.yaml` file that runs PostgreSQL using the `pgvector/pgvector:pg18` image.
+
+Start the database:
+
+```bash
+docker compose up -d postgres
+```
+
+Check the container status:
+
+```bash
+docker compose ps
+```
+
+View database logs if needed:
+
+```bash
+docker compose logs -f postgres
+```
+
+The database port is bound to `127.0.0.1` by default, keeping it accessible through the local machine rather than directly exposing it on all network interfaces.
+
+The Compose configuration uses a named volume to persist database data and mounts `docker/postgres/init.sql` for database initialization.
+
+### 3. Install PHP dependencies
+
+```bash
+composer install
+```
+
+### 4. Configure the environment
+
+Create your local environment file:
+
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+Configure the database connection and Gemini settings in `.env`.
+
+Example database settings:
+
+```dotenv
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=rag_chatbot
+DB_USERNAME=rag_user
+DB_PASSWORD=your_local_database_password
+```
+
+Use the same database credentials in Laravel and Docker Compose. The Compose file supports `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, and `DB_PORT`, with local development defaults.
+
+Configure the Gemini API key and model variables using the names defined in `.env.example` and the application's configuration.
+
+**Security:** Do not commit `.env`, real API keys, or production credentials. Replace development-only default passwords before using the application in a shared or production environment.
+
+### 5. Run database migrations
+
+Ensure the PostgreSQL container is healthy and the pgvector extension has been initialized. Then run:
+
+```bash
+php artisan migrate
+```
+
+The initialization script mounted at `docker/postgres/init.sql` runs when PostgreSQL initializes a new data directory. Editing the script does not automatically rerun it against an existing database volume.
+
+### 6. Run the application
+
+Start Laravel's development server:
+
+```bash
+php artisan serve
+```
+
+The default development URL is `http://127.0.0.1:8000`.
+
+### 7. Run automated tests
+
+```bash
+php artisan test
+```
 
 ## API Usage
 
+Protected endpoints require a valid Laravel Sanctum bearer token.
+
+### Authentication header
+
+```http
+Authorization: Bearer YOUR_SANCTUM_TOKEN
+Accept: application/json
+```
+
+Use a token generated for your own local development account. Never publish real tokens.
+
 ### Chat endpoint
 
-`POST /api/chat`
+**`POST /api/chat`**
 
-**Example request:**
+Example request:
 
 ```json
 {
-  "question": "What information is available in my documents?",
-  "tenant_id": 1
+  "question": "What information is available in my documents?"
 }
 ```
 
-**Example response:**
+Example response:
 
 ```json
 {
@@ -118,87 +243,69 @@ Answer + Source References
 }
 ```
 
-The response structure illustrates the current API contract. The actual answer and sources depend on the stored documents and retrieval results.
+The response illustrates the API structure. Actual answers and sources depend on the documents available to the authenticated user's tenant.
 
-**Note:** Tenant authentication and authorization must be enforced before exposing this endpoint to production users. The current development endpoint accepts `tenant_id` in the request; this must be replaced with a server-authorized tenant identity before production deployment.
+**Tenant security:** The application derives tenant identity from the authenticated user. Clients should not be allowed to select another tenant by supplying an arbitrary `tenant_id`.
 
-## Getting Started
+### Document management endpoints
 
-### Prerequisites
+The implemented API supports the following operations:
 
-- PHP 8.4 or a compatible version
-- Composer
-- PostgreSQL with the pgvector extension
-- A Google Gemini API key
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/documents` | Upload and process a text document |
+| `GET` | `/api/documents` | List accessible documents |
+| `GET` | `/api/documents/{document}` | Retrieve an accessible document |
+| `PATCH` | `/api/documents/{document}` | Update document information or replace content |
+| `DELETE` | `/api/documents/{document}` | Delete a document |
 
-### Installation
+All operations are subject to authentication, validation, and tenant-scoped authorization. See `routes/api.php` and the relevant controllers for the exact request and response contracts.
 
-1. Clone the repository:
+## Testing and Verification
 
-   ```bash
-   git clone https://github.com/razu91/rag-chatbot.git
-   cd rag-chatbot
-   ```
+At the latest verified development checkpoint:
 
-2. Install dependencies:
+- **45 automated tests passed**
+- **184 assertions passed**
+- Text chunking and overlap behavior verified.
+- Document ingestion and re-ingestion verified.
+- Tenant-scoped semantic search verified.
+- Chat authentication, validation, and error handling verified.
+- Document listing, viewing, updating, replacement, and deletion authorization verified.
+- Document upload validation and size restrictions verified.
+- Live document ingestion, Gemini answer generation, and source attribution successfully exercised.
+- `composer audit` reported no known security vulnerability advisories.
+- Git working tree was clean and the local `main` branch was synchronized with `origin/main`.
 
-   ```bash
-   composer install
-   ```
+These results reflect the checks performed at that development checkpoint. They do not guarantee that the application is free of every possible vulnerability.
 
-3. Configure the environment:
+## Current Limitations and Future Improvements
 
-   ```bash
-   cp .env.example .env
-   php artisan key:generate
-   ```
+Potential future improvements include:
 
-4. Configure `.env` with your PostgreSQL database credentials and Gemini API key. Use the environment variable names expected by the application's existing configuration.
+- Retrieval-quality evaluation using a representative question-and-answer dataset.
+- Expanded integration tests against a dedicated PostgreSQL/pgvector environment.
+- Rate limiting and production monitoring.
+- Containerized application deployment.
+- A frontend for chat, document management, and source inspection.
+- Additional operational documentation and deployment automation.
 
-5. Ensure PostgreSQL has the required pgvector extension enabled and configure the database connection.
-
-6. Run the migrations:
-
-   ```bash
-   php artisan migrate
-   ```
-
-7. Run the automated test suite:
-
-   ```bash
-   php artisan test
-   ```
-
-Never commit `.env` or expose API credentials in source control.
-
-## Testing
-
-The current automated test suite covers:
-
-- Text chunk splitting and overlap behavior
-- Empty text handling
-- Document chunk storage and re-ingestion
-- Tenant-scoped semantic search
-- Chat API response structure and input validation
-
-At the current development checkpoint, **10 tests pass with 29 assertions**.
-
-The chat controller test mocks the RAG service. A full integration test of the real embedding, retrieval, and Gemini generation pipeline remains planned.
-
-## Current Limitations and Roadmap
-
-The project is under active development. Planned improvements include:
-
-- End-to-end RAG integration testing
-- Document upload and document management APIs
-- Authentication and server-side tenant authorization
-- Improved retrieval evaluation and answer quality checks
-- A chat frontend with source citations
-- Production-oriented logging, rate limiting, and error handling
-- Containerized deployment and operational documentation
+These are potential extensions, not claims that the current MVP is incomplete.
 
 ## Project Goals
 
-This project is intended to demonstrate practical backend engineering concepts, including service-layer design, REST API development, relational and vector data storage, external AI API integration, tenant-aware data retrieval, and automated testing.
+This project demonstrates practical backend engineering concepts:
 
+- REST API development with Laravel.
+- Token-based authentication and tenant-aware authorization.
+- Document ingestion and text chunking.
+- Vector embeddings and semantic retrieval.
+- PostgreSQL and pgvector integration.
+- External AI API integration.
+- Service-layer architecture.
+- Automated testing and failure handling.
+- Docker-based local development.
 
+## Repository
+
+[GitHub — Laravel RAG Chatbot](https://github.com/razu91/rag-chatbot)
